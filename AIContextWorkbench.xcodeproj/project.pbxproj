@@ -1,0 +1,271 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* AIContextWorkbenchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AIContextWorkbenchApp.swift */; };
+		A10000000000000000000002 /* WorkbenchCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* WorkbenchCore.swift */; };
+		A10000000000000000000003 /* WorkbenchCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* WorkbenchCore.framework */; };
+		A10000000000000000000004 /* WorkbenchCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* WorkbenchCoreTests.swift */; };
+		A10000000000000000000005 /* WorkbenchCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* WorkbenchCore.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A30000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A70000000000000000000002;
+			remoteInfo = WorkbenchCore;
+		};
+		A30000000000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A90000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A70000000000000000000002;
+			remoteInfo = WorkbenchCore;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* AIContextWorkbenchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIContextWorkbenchApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* WorkbenchCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkbenchCore.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* WorkbenchCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkbenchCoreTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* WorkbenchCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = WorkbenchCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000005 /* AIContextWorkbenchApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AIContextWorkbenchApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000006 /* WorkbenchCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WorkbenchCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000007 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000003 /* WorkbenchCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A40000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A40000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000005 /* WorkbenchCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A50000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000002 /* Sources */,
+				A50000000000000000000005 /* Tests */,
+				A20000000000000000000007 /* Package.swift */,
+				A20000000000000000000008 /* README.md */,
+				A50000000000000000000006 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A50000000000000000000002 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000003 /* AIContextWorkbenchApp */,
+				A50000000000000000000004 /* WorkbenchCore */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000003 /* AIContextWorkbenchApp */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* AIContextWorkbenchApp.swift */,
+			);
+			path = AIContextWorkbenchApp;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000004 /* WorkbenchCore */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000002 /* WorkbenchCore.swift */,
+			);
+			path = WorkbenchCore;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000005 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				A50000000000000000000007 /* WorkbenchCoreTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000007 /* WorkbenchCoreTests */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000003 /* WorkbenchCoreTests.swift */,
+			);
+			path = WorkbenchCoreTests;
+			sourceTree = "<group>";
+		};
+		A50000000000000000000006 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000005 /* AIContextWorkbenchApp.app */,
+				A20000000000000000000004 /* WorkbenchCore.framework */,
+				A20000000000000000000006 /* WorkbenchCoreTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A70000000000000000000001 /* AIContextWorkbenchApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AB0000000000000000000001 /* Build configuration list for PBXNativeTarget "AIContextWorkbenchApp" */;
+			buildPhases = (
+				A60000000000000000000001 /* Sources */,
+				A40000000000000000000001 /* Frameworks */,
+				A60000000000000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A80000000000000000000001 /* PBXTargetDependency */,
+			);
+			name = AIContextWorkbenchApp;
+			productName = AIContextWorkbenchApp;
+			productReference = A20000000000000000000005 /* AIContextWorkbenchApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A70000000000000000000002 /* WorkbenchCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AB0000000000000000000002 /* Build configuration list for PBXNativeTarget "WorkbenchCore" */;
+			buildPhases = (
+				A60000000000000000000002 /* Sources */,
+				A40000000000000000000002 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = WorkbenchCore;
+			productName = WorkbenchCore;
+			productReference = A20000000000000000000004 /* WorkbenchCore.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		A70000000000000000000003 /* WorkbenchCoreTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AB0000000000000000000003 /* Build configuration list for PBXNativeTarget "WorkbenchCoreTests" */;
+			buildPhases = (
+				A60000000000000000000003 /* Sources */,
+				A40000000000000000000003 /* Frameworks */,
+				A60000000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A80000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = WorkbenchCoreTests;
+			productName = WorkbenchCoreTests;
+			productReference = A20000000000000000000006 /* WorkbenchCoreTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A90000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					A70000000000000000000001 = { CreatedOnToolsVersion = 26.0; };
+					A70000000000000000000002 = { CreatedOnToolsVersion = 26.0; };
+					A70000000000000000000003 = { CreatedOnToolsVersion = 26.0; TestTargetID = A70000000000000000000002; };
+				};
+			};
+			buildConfigurationList = AB0000000000000000000004 /* Build configuration list for PBXProject "AIContextWorkbench" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = A50000000000000000000001;
+			productRefGroup = A50000000000000000000006 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A70000000000000000000001 /* AIContextWorkbenchApp */,
+				A70000000000000000000002 /* WorkbenchCore */,
+				A70000000000000000000003 /* WorkbenchCoreTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A60000000000000000000004 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A60000000000000000000005 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A10000000000000000000001 /* AIContextWorkbenchApp.swift in Sources */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A10000000000000000000002 /* WorkbenchCore.swift in Sources */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A10000000000000000000004 /* WorkbenchCoreTests.swift in Sources */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A80000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A70000000000000000000002 /* WorkbenchCore */; targetProxy = A30000000000000000000001 /* PBXContainerItemProxy */; };
+		A80000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A70000000000000000000002 /* WorkbenchCore */; targetProxy = A30000000000000000000002 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		AC0000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "AI Context Workbench"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools"; MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 0.1; PRODUCT_BUNDLE_IDENTIFIER = com.watadani.prototype.AIContextWorkbench; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = macosx; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 6.0; }; name = Debug; };
+		AC0000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "AI Context Workbench"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools"; MACOSX_DEPLOYMENT_TARGET = 14.0; MARKETING_VERSION = 0.1; PRODUCT_BUNDLE_IDENTIFIER = com.watadani.prototype.AIContextWorkbench; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = macosx; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 6.0; }; name = Release; };
+		AC0000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {BUILD_LIBRARY_FOR_DISTRIBUTION = NO; DEFINES_MODULE = YES; GENERATE_INFOPLIST_FILE = YES; DYLIB_COMPATIBILITY_VERSION = 1; DYLIB_CURRENT_VERSION = 1; DYLIB_INSTALL_NAME_BASE = "@rpath"; INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks"; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.watadani.prototype.WorkbenchCore; PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)"; SDKROOT = macosx; SKIP_INSTALL = YES; SWIFT_VERSION = 6.0; }; name = Debug; };
+		AC0000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {BUILD_LIBRARY_FOR_DISTRIBUTION = NO; DEFINES_MODULE = YES; GENERATE_INFOPLIST_FILE = YES; DYLIB_COMPATIBILITY_VERSION = 1; DYLIB_CURRENT_VERSION = 1; DYLIB_INSTALL_NAME_BASE = "@rpath"; INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks"; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.watadani.prototype.WorkbenchCore; PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)"; SDKROOT = macosx; SKIP_INSTALL = YES; SWIFT_VERSION = 6.0; }; name = Release; };
+		AC0000000000000000000005 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = ""; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.watadani.prototype.WorkbenchCoreTests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = macosx; SWIFT_VERSION = 6.0; TEST_HOST = ""; }; name = Debug; };
+		AC0000000000000000000006 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = ""; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.watadani.prototype.WorkbenchCoreTests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = macosx; SWIFT_VERSION = 6.0; TEST_HOST = ""; }; name = Release; };
+		AC0000000000000000000007 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_STRICT_OBJC_MSGSEND = YES; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_DYNAMIC_NO_PIC = NO; GCC_NO_COMMON_BLOCKS = YES; GCC_OPTIMIZATION_LEVEL = 0; GCC_PREPROCESSOR_DEFINITIONS = ("DEBUG=1", "$(inherited)"); GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; LOCALIZATION_PREFERS_STRING_CATALOGS = YES; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; MTL_FAST_MATH = YES; ONLY_ACTIVE_ARCH = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+		AC0000000000000000000008 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES; CLANG_WARN_BOOL_CONVERSION = YES; CLANG_WARN_COMMA = YES; CLANG_WARN_CONSTANT_CONVERSION = YES; CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES; CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR; CLANG_WARN_DOCUMENTATION_COMMENTS = YES; CLANG_WARN_EMPTY_BODY = YES; CLANG_WARN_ENUM_CONVERSION = YES; CLANG_WARN_INFINITE_RECURSION = YES; CLANG_WARN_INT_CONVERSION = YES; CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES; CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES; CLANG_WARN_OBJC_LITERAL_CONVERSION = YES; CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR; CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES; CLANG_WARN_RANGE_LOOP_ANALYSIS = YES; CLANG_WARN_STRICT_PROTOTYPES = YES; CLANG_WARN_SUSPICIOUS_MOVE = YES; CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE; CLANG_WARN_UNREACHABLE_CODE = YES; CLANG_WARN__DUPLICATE_METHOD_MATCH = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_NO_COMMON_BLOCKS = YES; GCC_WARN_64_TO_32_BIT_CONVERSION = YES; GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR; GCC_WARN_UNDECLARED_SELECTOR = YES; GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE; GCC_WARN_UNUSED_FUNCTION = YES; GCC_WARN_UNUSED_VARIABLE = YES; LOCALIZATION_PREFERS_STRING_CATALOGS = YES; MTL_ENABLE_DEBUG_INFO = NO; MTL_FAST_MATH = YES; SWIFT_COMPILATION_MODE = wholemodule; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AB0000000000000000000001 /* Build configuration list for PBXNativeTarget "AIContextWorkbenchApp" */ = {isa = XCConfigurationList; buildConfigurations = (AC0000000000000000000001 /* Debug */, AC0000000000000000000002 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		AB0000000000000000000002 /* Build configuration list for PBXNativeTarget "WorkbenchCore" */ = {isa = XCConfigurationList; buildConfigurations = (AC0000000000000000000003 /* Debug */, AC0000000000000000000004 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		AB0000000000000000000003 /* Build configuration list for PBXNativeTarget "WorkbenchCoreTests" */ = {isa = XCConfigurationList; buildConfigurations = (AC0000000000000000000005 /* Debug */, AC0000000000000000000006 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		AB0000000000000000000004 /* Build configuration list for PBXProject "AIContextWorkbench" */ = {isa = XCConfigurationList; buildConfigurations = (AC0000000000000000000007 /* Debug */, AC0000000000000000000008 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A90000000000000000000001 /* Project object */;
+}
