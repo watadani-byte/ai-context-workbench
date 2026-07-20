@@ -88,3 +88,41 @@ final class CanonicalSourceTests: XCTestCase {
         XCTAssertEqual(source.makeSnapshot().text, text)
     }
 }
+
+final class EditorStateTests: XCTestCase {
+    func testInitialTextIsCanonicalAtInitialRevision() {
+        let state = EditorState(initialText: "Initial")
+
+        XCTAssertEqual(state.text, "Initial")
+        XCTAssertEqual(state.revision, .initial)
+    }
+
+    func testEditorChangeUpdatesCanonicalSourceOnce() {
+        var state = EditorState(initialText: "Before")
+
+        let changed = state.applyEditorText("After")
+
+        XCTAssertTrue(changed)
+        XCTAssertEqual(state.text, "After")
+        XCTAssertEqual(state.revision.rawValue, 1)
+    }
+
+    func testIdenticalEditorChangeDoesNotAdvanceRevision() {
+        var state = EditorState(initialText: "Same")
+
+        let changed = state.applyEditorText("Same")
+
+        XCTAssertFalse(changed)
+        XCTAssertEqual(state.revision, .initial)
+    }
+
+    func testCanonicalReplacementIsAvailableToEditorSurface() {
+        var state = EditorState(initialText: "Before")
+
+        state.replaceCanonicalText(with: "Canonical update")
+
+        XCTAssertEqual(state.text, "Canonical update")
+        XCTAssertEqual(state.revision.rawValue, 1)
+        XCTAssertEqual(state.makeSnapshot().text, "Canonical update")
+    }
+}

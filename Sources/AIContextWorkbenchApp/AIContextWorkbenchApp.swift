@@ -16,7 +16,9 @@ struct AIContextWorkbenchApp: App {
 }
 
 private struct ContentView: View {
-    @State private var prototypeText = "AI Context Workbench\n\nNSTextView integration prototype"
+    @State private var editorState = EditorState(
+        initialText: "AI Context Workbench\n\nControlled synchronization prototype"
+    )
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,16 +26,28 @@ private struct ContentView: View {
                 Text(WorkbenchCore.productName)
                     .font(.headline)
                 Spacer()
-                Text("NSTextView Prototype")
+                Text("Revision \(editorState.revision.rawValue)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Button("Load Sample") {
+                    editorState.replaceCanonicalText(
+                        with: "AI Context Workbench\n\nCanonical update at revision \(editorState.revision.rawValue + 1)"
+                    )
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
 
             Divider()
 
-            PlatformTextView(text: $prototypeText)
+            PlatformTextView(
+                text: editorState.text,
+                revision: editorState.revision,
+                onTextChange: { newText in
+                    editorState.applyEditorText(newText)
+                }
+            )
         }
         .frame(minWidth: 640, minHeight: 420)
     }
@@ -41,10 +55,12 @@ private struct ContentView: View {
 
 #if canImport(AppKit)
 private struct PlatformTextView: NSViewRepresentable {
-    @Binding var text: String
+    let text: String
+    let revision: CanonicalSourceRevision
+    let onTextChange: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
+        Coordinator(onTextChange: onTextChange)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -87,13 +103,20 @@ private struct PlatformTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.onTextChange = onTextChange
+
         guard let textView = context.coordinator.textView,
               textView.string != text else {
+            context.coordinator.appliedRevision = revision
             return
         }
 
         let selectedRanges = textView.selectedRanges
+        context.coordinator.isApplyingCanonicalText = true
         textView.string = text
+        context.coordinator.isApplyingCanonicalText = false
+        context.coordinator.appliedRevision = revision
+
         let textLength = (text as NSString).length
         let validSelections = selectedRanges.filter {
             NSMaxRange($0.rangeValue) <= textLength
@@ -104,27 +127,37 @@ private struct PlatformTextView: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
-        @Binding private var text: String
+        var onTextChange: (String) -> Void
         weak var textView: NSTextView?
+        var appliedRevision = CanonicalSourceRevision.initial
+        var isApplyingCanonicalText = false
 
-        init(text: Binding<String>) {
-            _text = text
+        init(onTextChange: @escaping (String) -> Void) {
+            self.onTextChange = onTextChange
         }
 
         func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else {
+            guard !isApplyingCanonicalText,
+                  let textView = notification.object as? NSTextView else {
                 return
             }
-            text = textView.string
+            onTextChange(textView.string)
         }
     }
 }
 #else
 private struct PlatformTextView: View {
-    @Binding var text: String
+    let text: String
+    let revision: CanonicalSourceRevision
+    let onTextChange: (String) -> Void
 
     var body: some View {
-        TextEditor(text: $text)
+        TextEditor(
+            text: Binding(
+                get: { text },
+                set: onTextChange
+            )
+        )
     }
 }
 #endif

@@ -71,3 +71,39 @@ public struct CanonicalSource: Equatable, Sendable {
         CanonicalSourceSnapshot(text: text, revision: revision)
     }
 }
+
+/// Coordinates editor-originated and canonical-originated text changes.
+///
+/// The canonical source remains authoritative. This value provides explicit
+/// synchronization entry points without introducing UI or file-system state.
+public struct EditorState: Equatable, Sendable {
+    public private(set) var canonicalSource: CanonicalSource
+
+    public init(initialText: String = "") {
+        canonicalSource = CanonicalSource(text: initialText)
+    }
+
+    public var text: String {
+        canonicalSource.text
+    }
+
+    public var revision: CanonicalSourceRevision {
+        canonicalSource.revision
+    }
+
+    /// Applies text observed from the editor surface to the canonical source.
+    @discardableResult
+    public mutating func applyEditorText(_ text: String) -> Bool {
+        canonicalSource.replaceText(with: text)
+    }
+
+    /// Replaces canonical text from a non-editor source.
+    @discardableResult
+    public mutating func replaceCanonicalText(with text: String) -> Bool {
+        canonicalSource.replaceText(with: text)
+    }
+
+    public func makeSnapshot() -> CanonicalSourceSnapshot {
+        canonicalSource.makeSnapshot()
+    }
+}
