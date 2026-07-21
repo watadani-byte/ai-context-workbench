@@ -126,3 +126,59 @@ final class EditorStateTests: XCTestCase {
         XCTAssertEqual(state.makeSnapshot().text, "Canonical update")
     }
 }
+
+final class BasicEditingOperationTests: XCTestCase {
+    func testInsertResultUpdatesCanonicalSource() {
+        var state = EditorState(initialText: "AB")
+
+        state.applyEditorText("AXB")
+
+        XCTAssertEqual(state.text, "AXB")
+        XCTAssertEqual(state.revision.rawValue, 1)
+    }
+
+    func testDeleteResultUpdatesCanonicalSource() {
+        var state = EditorState(initialText: "ABC")
+
+        state.applyEditorText("AC")
+
+        XCTAssertEqual(state.text, "AC")
+        XCTAssertEqual(state.revision.rawValue, 1)
+    }
+
+    func testReplaceResultUpdatesCanonicalSource() {
+        var state = EditorState(initialText: "ABC")
+
+        state.applyEditorText("AXC")
+
+        XCTAssertEqual(state.text, "AXC")
+        XCTAssertEqual(state.revision.rawValue, 1)
+    }
+
+    func testSelectionInsideReplacementTextIsPreserved() {
+        let selection = EditorSelectionRange(location: 2, length: 3)
+
+        XCTAssertEqual(
+            selection.clamped(toUTF16Length: 10),
+            EditorSelectionRange(location: 2, length: 3)
+        )
+    }
+
+    func testCursorBeyondReplacementTextMovesToEnd() {
+        let cursor = EditorSelectionRange(location: 10, length: 0)
+
+        XCTAssertEqual(
+            cursor.clamped(toUTF16Length: 4),
+            EditorSelectionRange(location: 4, length: 0)
+        )
+    }
+
+    func testSelectionCrossingReplacementEndIsShortened() {
+        let selection = EditorSelectionRange(location: 3, length: 5)
+
+        XCTAssertEqual(
+            selection.clamped(toUTF16Length: 5),
+            EditorSelectionRange(location: 3, length: 2)
+        )
+    }
+}

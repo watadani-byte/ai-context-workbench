@@ -72,6 +72,37 @@ public struct CanonicalSource: Equatable, Sendable {
     }
 }
 
+
+/// UTF-16 based selection range shared across the editor bridge boundary.
+///
+/// NSTextView reports selections as NSRange values measured in UTF-16 code
+/// units. Keeping the range representation in WorkbenchCore allows selection
+/// restoration rules to be tested without making the canonical source depend
+/// on AppKit.
+public struct EditorSelectionRange: Equatable, Sendable {
+    public let location: Int
+    public let length: Int
+
+    public init(location: Int, length: Int) {
+        precondition(location >= 0, "Selection location must be non-negative")
+        precondition(length >= 0, "Selection length must be non-negative")
+        self.location = location
+        self.length = length
+    }
+
+    /// Returns a range that remains valid for text with the supplied UTF-16
+    /// length. A cursor beyond the new end moves to the end; a selection that
+    /// overlaps the new end is shortened rather than discarded.
+    public func clamped(toUTF16Length textLength: Int) -> Self {
+        precondition(textLength >= 0, "Text length must be non-negative")
+
+        let safeLocation = min(location, textLength)
+        let availableLength = textLength - safeLocation
+        let safeLength = min(length, availableLength)
+        return Self(location: safeLocation, length: safeLength)
+    }
+}
+
 /// Coordinates editor-originated and canonical-originated text changes.
 ///
 /// The canonical source remains authoritative. This value provides explicit

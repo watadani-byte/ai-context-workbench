@@ -73,6 +73,8 @@ private struct PlatformTextView: NSViewRepresentable {
 
         let textView = NSTextView(frame: .zero)
         textView.delegate = context.coordinator
+        textView.isEditable = true
+        textView.isSelectable = true
         textView.isRichText = false
         textView.importsGraphics = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -118,12 +120,20 @@ private struct PlatformTextView: NSViewRepresentable {
         context.coordinator.appliedRevision = revision
 
         let textLength = (text as NSString).length
-        let validSelections = selectedRanges.filter {
-            NSMaxRange($0.rangeValue) <= textLength
+        textView.selectedRanges = selectedRanges.map { value in
+            let range = value.rangeValue
+            let restored = EditorSelectionRange(
+                location: range.location,
+                length: range.length
+            ).clamped(toUTF16Length: textLength)
+
+            return NSValue(
+                range: NSRange(
+                    location: restored.location,
+                    length: restored.length
+                )
+            )
         }
-        textView.selectedRanges = validSelections.isEmpty
-            ? [NSValue(range: NSRange(location: textLength, length: 0))]
-            : validSelections
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
