@@ -141,6 +141,7 @@ private struct PlatformTextView: NSViewRepresentable {
         weak var textView: NSTextView?
         var appliedRevision = CanonicalSourceRevision.initial
         var isApplyingCanonicalText = false
+        var inputTransactionGate = EditorInputTransactionGate()
 
         init(onTextChange: @escaping (String) -> Void) {
             self.onTextChange = onTextChange
@@ -151,7 +152,15 @@ private struct PlatformTextView: NSViewRepresentable {
                   let textView = notification.object as? NSTextView else {
                 return
             }
-            onTextChange(textView.string)
+
+            guard let committedText = inputTransactionGate.observe(
+                text: textView.string,
+                hasMarkedText: textView.hasMarkedText()
+            ) else {
+                return
+            }
+
+            onTextChange(committedText)
         }
     }
 }

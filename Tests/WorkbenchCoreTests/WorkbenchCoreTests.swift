@@ -182,3 +182,50 @@ final class BasicEditingOperationTests: XCTestCase {
         )
     }
 }
+
+final class EditorInputTransactionGateTests: XCTestCase {
+    func testPlainTextPassesThroughImmediately() {
+        var gate = EditorInputTransactionGate()
+
+        let committed = gate.observe(text: "abc", hasMarkedText: false)
+
+        XCTAssertEqual(committed, "abc")
+        XCTAssertFalse(gate.isComposing)
+    }
+
+    func testMarkedTextIsDeferred() {
+        var gate = EditorInputTransactionGate()
+
+        let committed = gate.observe(text: "にほ", hasMarkedText: true)
+
+        XCTAssertNil(committed)
+        XCTAssertTrue(gate.isComposing)
+    }
+
+    func testRepeatedMarkedTextUpdatesRemainDeferred() {
+        var gate = EditorInputTransactionGate()
+
+        XCTAssertNil(gate.observe(text: "に", hasMarkedText: true))
+        XCTAssertNil(gate.observe(text: "にほ", hasMarkedText: true))
+        XCTAssertNil(gate.observe(text: "にほんご", hasMarkedText: true))
+        XCTAssertTrue(gate.isComposing)
+    }
+
+    func testCompositionCommitEmitsFinalTextOnceObservedWithoutMarkedText() {
+        var gate = EditorInputTransactionGate()
+
+        XCTAssertNil(gate.observe(text: "にほんご", hasMarkedText: true))
+        let committed = gate.observe(text: "日本語", hasMarkedText: false)
+
+        XCTAssertEqual(committed, "日本語")
+        XCTAssertFalse(gate.isComposing)
+    }
+
+    func testUndoLikeCommittedTextPassesThrough() {
+        var gate = EditorInputTransactionGate()
+
+        XCTAssertEqual(gate.observe(text: "AB", hasMarkedText: false), "AB")
+        XCTAssertEqual(gate.observe(text: "A", hasMarkedText: false), "A")
+        XCTAssertFalse(gate.isComposing)
+    }
+}

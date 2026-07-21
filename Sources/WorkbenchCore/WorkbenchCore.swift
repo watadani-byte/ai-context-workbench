@@ -103,6 +103,29 @@ public struct EditorSelectionRange: Equatable, Sendable {
     }
 }
 
+
+/// Gates editor text changes so IME marked text does not become canonical
+/// until the composition is committed.
+public struct EditorInputTransactionGate: Equatable, Sendable {
+    public private(set) var isComposing = false
+
+    public init() {}
+
+    /// Observes the current editor text and marked-text state.
+    ///
+    /// - Returns: committed text when the observation is outside an active
+    ///   composition; `nil` while marked text is still being composed.
+    public mutating func observe(text: String, hasMarkedText: Bool) -> String? {
+        if hasMarkedText {
+            isComposing = true
+            return nil
+        }
+
+        isComposing = false
+        return text
+    }
+}
+
 /// Coordinates editor-originated and canonical-originated text changes.
 ///
 /// The canonical source remains authoritative. This value provides explicit
