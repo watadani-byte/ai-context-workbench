@@ -213,11 +213,17 @@ public struct EditorState: Equatable, Sendable {
     /// A successful completion moves the clean baseline to the snapshot that was
     /// actually saved. If editing continued after the request was created, the
     /// current text remains dirty relative to that older saved snapshot. Failed
-    /// completions leave the existing clean baseline unchanged.
+    /// completions leave the existing clean baseline unchanged. A successful
+    /// completion older than the accepted clean baseline is rejected so an
+    /// out-of-order persistence response cannot move the baseline backward.
     @discardableResult
     public mutating func applySaveCompletion(_ completion: SaveCompletion) -> Bool {
         switch completion {
         case .succeeded(let request):
+            guard request.snapshot.revision >= cleanBaseline.revision else {
+                return false
+            }
+
             cleanBaseline = request.snapshot
             return true
         case .failed:

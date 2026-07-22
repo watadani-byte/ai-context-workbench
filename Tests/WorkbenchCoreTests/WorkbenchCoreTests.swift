@@ -366,3 +366,117 @@ final class SaveRequestBoundaryTests: XCTestCase {
         XCTAssertEqual(state.text, "Unsaved")
     }
 }
+
+final class IntegratedEditorFlowTests: XCTestCase {
+    func testMarkedTextDoesNotUpdateCanonicalSource() {
+        var gate = EditorInputTransactionGate()
+        var state = EditorState(initialText: "")
+
+        let committed = gate.observe(text: "にほ", hasMarkedText: true)
+        if let committed {
+            state.applyEditorText(committed)
+        }
+
+        XCTAssertNil(committed)
+        XCTAssertEqual(state.text, "")
+        XCTAssertEqual(state.revision, .initial)
+        XCTAssertFalse(state.isDirty)
+    }
+
+    func testIMECommitUpdatesCanonicalSourceExactlyOnce() {
+        var gate = EditorInputTransactionGate()
+        var state = EditorState(initialText: "")
+
+        XCTAssertNil(gate.observe(text: "にほんご", hasMarkedText: true))
+        let committed = gate.observe(text: "日本語", hasMarkedText: false)
+        if let committed {
+            state.applyEditorText(committed)
+        }
+
+        XCTAssertEqual(state.text, "日本語")
+        XCTAssertEqual(state.revision.rawValue, 1)
+        XCTAssertTrue(state.isDirty)
+    }
+
+    func testUndoLikeReturnRestoresCanonicalTextAndCleanState() {
+        var state = EditorState(initialText: "Baseline")
+
+        state.applyEditorText("Edited")
+        state.applyEditorText("Baseline")
+
+        XCTAssertEqual(state.text, "Baseline")
+        XCTAssertEqual(state.revision.rawValue, 2)
+        XCTAssertFalse(state.isDirty)
+    }
+
+    func testSnapshotDoesNotObserveEditingAfterCapture() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Captured")
+        let snapshot = state.makeSnapshot()
+
+        state.applyEditorText("Later edit")
+
+        XCTAssertEqual(snapshot.text, "Captured")
+        XCTAssertEqual(snapshot.revision.rawValue, 1)
+        XCTAssertEqual(state.text, "Later edit")
+        XCTAssertEqual(state.revision.rawValue, 2)
+    }
+
+    func testCompletionForRequestedSnapshotKeepsLaterEditDirty() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Requested")
+        let request = state.makeSaveRequest()
+        state.applyEditorText("Later edit")
+
+        let accepted = state.applySaveCompletion(.succeeded(request))
+
+        XCTAssertTrue(accepted)
+        XCTAssertEqual(state.cleanBaselineRevision.rawValue, 1)
+        XCTAssertEqual(state.text, "Later edit")
+        XCTAssertTrue(state.isDirty)
+    }
+
+    func testOlderCompletionCannotMoveCleanBaselineBackward() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("First")
+        let olderRequest = state.makeSaveRequest()
+        state.applyEditorText("Second")
+        let newerRequest = state.makeSaveRequest()
+
+        XCTAssertTrue(state.applySaveCompletion(.succeeded(newerRequest)))
+        let accepted = state.applySaveCompletion(.succeeded(olderRequest))
+
+        XCTAssertFalse(accepted)
+        XCTAssertEqual(state.cleanBaselineRevision, newerRequest.snapshot.revision)
+        XCTAssertEqual(state.text, "Second")
+        XCTAssertFalse(state.isDirty)
+    }
+
+    func testFailedCompletionDoesNotChangeAcceptedCleanBaseline() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Saved")
+        let savedRequest = state.makeSaveRequest()
+        XCTAssertTrue(state.applySaveCompletion(.succeeded(savedRequest)))
+
+        state.applyEditorText("Unsaved")
+        let failedRequest = state.makeSaveRequest()
+        let accepted = state.applySaveCompletion(.failed(failedRequest))
+
+        XCTAssertFalse(accepted)
+        XCTAssertEqual(state.cleanBaselineRevision, savedRequest.snapshot.revision)
+        XCTAssertEqual(state.text, "Unsaved")
+        XCTAssertTrue(state.isDirty)
+    }
+
+    func testDuplicateCompletionForSameRevisionIsIdempotent() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Saved")
+        let request = state.makeSaveRequest()
+
+        XCTAssertTrue(state.applySaveCompletion(.succeeded(request)))
+        XCTAssertTrue(state.applySaveCompletion(.succeeded(request)))
+        XCTAssertEqual(state.cleanBaselineRevision, request.snapshot.revision)
+        XCTAssertEqual(state.text, "Saved")
+        XCTAssertFalse(state.isDirty)
+    }
+}
