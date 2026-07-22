@@ -26,6 +26,10 @@ private struct ContentView: View {
                 Text(WorkbenchCore.productName)
                     .font(.headline)
                 Spacer()
+                Text(editorState.isDirty ? "Modified" : "Clean")
+                    .font(.caption)
+                    .foregroundStyle(editorState.isDirty ? .primary : .secondary)
+
                 Text("Revision \(editorState.revision.rawValue)")
                     .font(.caption)
                     .foregroundStyle(.secondary)

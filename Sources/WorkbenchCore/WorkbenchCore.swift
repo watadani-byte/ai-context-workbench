@@ -132,9 +132,12 @@ public struct EditorInputTransactionGate: Equatable, Sendable {
 /// synchronization entry points without introducing UI or file-system state.
 public struct EditorState: Equatable, Sendable {
     public private(set) var canonicalSource: CanonicalSource
+    private var cleanBaseline: CanonicalSourceSnapshot
 
     public init(initialText: String = "") {
-        canonicalSource = CanonicalSource(text: initialText)
+        let source = CanonicalSource(text: initialText)
+        canonicalSource = source
+        cleanBaseline = source.makeSnapshot()
     }
 
     public var text: String {
@@ -143,6 +146,18 @@ public struct EditorState: Equatable, Sendable {
 
     public var revision: CanonicalSourceRevision {
         canonicalSource.revision
+    }
+
+    /// Indicates whether canonical text differs from the accepted clean baseline.
+    ///
+    /// Dirty state is content-based rather than revision-based so an undo that
+    /// restores the baseline text also restores a clean state.
+    public var isDirty: Bool {
+        canonicalSource.text != cleanBaseline.text
+    }
+
+    public var cleanBaselineRevision: CanonicalSourceRevision {
+        cleanBaseline.revision
     }
 
     /// Applies text observed from the editor surface to the canonical source.
@@ -155,6 +170,14 @@ public struct EditorState: Equatable, Sendable {
     @discardableResult
     public mutating func replaceCanonicalText(with text: String) -> Bool {
         canonicalSource.replaceText(with: text)
+    }
+
+    /// Establishes the current canonical source as the clean baseline.
+    ///
+    /// This is deliberately persistence-agnostic. WP08 may invoke this only
+    /// after a successful save boundary has been verified.
+    public mutating func establishCleanBaseline() {
+        cleanBaseline = canonicalSource.makeSnapshot()
     }
 
     public func makeSnapshot() -> CanonicalSourceSnapshot {

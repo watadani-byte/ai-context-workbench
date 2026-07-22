@@ -229,3 +229,71 @@ final class EditorInputTransactionGateTests: XCTestCase {
         XCTAssertFalse(gate.isComposing)
     }
 }
+
+final class DirtyStateAndSnapshotTests: XCTestCase {
+    func testInitialStateIsClean() {
+        let state = EditorState(initialText: "Baseline")
+
+        XCTAssertFalse(state.isDirty)
+        XCTAssertEqual(state.cleanBaselineRevision, .initial)
+    }
+
+    func testEditorChangeMarksStateDirty() {
+        var state = EditorState(initialText: "Baseline")
+
+        state.applyEditorText("Changed")
+
+        XCTAssertTrue(state.isDirty)
+    }
+
+    func testIdenticalEditorTextKeepsStateClean() {
+        var state = EditorState(initialText: "Baseline")
+
+        state.applyEditorText("Baseline")
+
+        XCTAssertFalse(state.isDirty)
+    }
+
+    func testUndoLikeReturnToBaselineRestoresCleanState() {
+        var state = EditorState(initialText: "Baseline")
+
+        state.applyEditorText("Changed")
+        state.applyEditorText("Baseline")
+
+        XCTAssertFalse(state.isDirty)
+        XCTAssertEqual(state.revision.rawValue, 2)
+    }
+
+    func testCanonicalReplacementMarksStateDirty() {
+        var state = EditorState(initialText: "Baseline")
+
+        state.replaceCanonicalText(with: "Canonical replacement")
+
+        XCTAssertTrue(state.isDirty)
+    }
+
+    func testEstablishCleanBaselineResetsDirtyStateWithoutChangingText() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Changed")
+        let revisionBeforeBaseline = state.revision
+
+        state.establishCleanBaseline()
+
+        XCTAssertFalse(state.isDirty)
+        XCTAssertEqual(state.text, "Changed")
+        XCTAssertEqual(state.cleanBaselineRevision, revisionBeforeBaseline)
+        XCTAssertEqual(state.revision, revisionBeforeBaseline)
+    }
+
+    func testSnapshotRemainsIsolatedAfterEditorStateChanges() {
+        var state = EditorState(initialText: "Before")
+        let snapshot = state.makeSnapshot()
+
+        state.applyEditorText("After")
+
+        XCTAssertEqual(snapshot.text, "Before")
+        XCTAssertEqual(snapshot.revision, .initial)
+        XCTAssertEqual(state.text, "After")
+        XCTAssertEqual(state.revision.rawValue, 1)
+    }
+}
