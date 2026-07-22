@@ -297,3 +297,72 @@ final class DirtyStateAndSnapshotTests: XCTestCase {
         XCTAssertEqual(state.revision.rawValue, 1)
     }
 }
+
+final class SaveRequestBoundaryTests: XCTestCase {
+    func testSaveRequestCapturesCurrentSnapshotWithoutChangingState() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Changed")
+        let revisionBeforeRequest = state.revision
+
+        let request = state.makeSaveRequest()
+
+        XCTAssertEqual(request.snapshot.text, "Changed")
+        XCTAssertEqual(request.snapshot.revision, revisionBeforeRequest)
+        XCTAssertEqual(state.revision, revisionBeforeRequest)
+        XCTAssertTrue(state.isDirty)
+    }
+
+    func testSaveRequestRemainsIsolatedFromLaterEditing() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("To save")
+        let request = state.makeSaveRequest()
+
+        state.applyEditorText("Edited after request")
+
+        XCTAssertEqual(request.snapshot.text, "To save")
+        XCTAssertEqual(request.snapshot.revision.rawValue, 1)
+        XCTAssertEqual(state.text, "Edited after request")
+        XCTAssertEqual(state.revision.rawValue, 2)
+    }
+
+    func testSuccessfulSaveOfCurrentSnapshotMarksStateClean() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Saved text")
+        let request = state.makeSaveRequest()
+
+        let accepted = state.applySaveCompletion(.succeeded(request))
+
+        XCTAssertTrue(accepted)
+        XCTAssertFalse(state.isDirty)
+        XCTAssertEqual(state.cleanBaselineRevision, request.snapshot.revision)
+        XCTAssertEqual(state.text, "Saved text")
+    }
+
+    func testSuccessfulSaveOfStaleSnapshotKeepsLaterEditingDirty() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Snapshot to save")
+        let request = state.makeSaveRequest()
+        state.applyEditorText("Newer edit")
+
+        let accepted = state.applySaveCompletion(.succeeded(request))
+
+        XCTAssertTrue(accepted)
+        XCTAssertTrue(state.isDirty)
+        XCTAssertEqual(state.cleanBaselineRevision, request.snapshot.revision)
+        XCTAssertEqual(state.text, "Newer edit")
+        XCTAssertEqual(state.revision.rawValue, 2)
+    }
+
+    func testFailedSaveDoesNotMoveCleanBaseline() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Unsaved")
+        let request = state.makeSaveRequest()
+
+        let accepted = state.applySaveCompletion(.failed(request))
+
+        XCTAssertFalse(accepted)
+        XCTAssertTrue(state.isDirty)
+        XCTAssertEqual(state.cleanBaselineRevision, .initial)
+        XCTAssertEqual(state.text, "Unsaved")
+    }
+}

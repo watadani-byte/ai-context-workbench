@@ -39,6 +39,11 @@ private struct ContentView: View {
                         with: "AI Context Workbench\n\nCanonical update at revision \(editorState.revision.rawValue + 1)"
                     )
                 }
+
+                Button("Simulate Save") {
+                    let request = editorState.makeSaveRequest()
+                    editorState.applySaveCompletion(.succeeded(request))
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

@@ -126,6 +126,24 @@ public struct EditorInputTransactionGate: Equatable, Sendable {
     }
 }
 
+/// Immutable request handed from canonical/editor state to the persistence boundary.
+///
+/// The request captures a snapshot so downstream processing cannot observe later
+/// editor mutations. WP08 deliberately does not perform file-system I/O.
+public struct SaveRequest: Equatable, Sendable {
+    public let snapshot: CanonicalSourceSnapshot
+
+    public init(snapshot: CanonicalSourceSnapshot) {
+        self.snapshot = snapshot
+    }
+}
+
+/// Completion reported by the persistence boundary for a specific request.
+public enum SaveCompletion: Equatable, Sendable {
+    case succeeded(SaveRequest)
+    case failed(SaveRequest)
+}
+
 /// Coordinates editor-originated and canonical-originated text changes.
 ///
 /// The canonical source remains authoritative. This value provides explicit
@@ -182,5 +200,28 @@ public struct EditorState: Equatable, Sendable {
 
     public func makeSnapshot() -> CanonicalSourceSnapshot {
         canonicalSource.makeSnapshot()
+    }
+
+    /// Captures the exact canonical snapshot that a persistence boundary should save.
+    /// Creating a request does not alter revision or dirty state.
+    public func makeSaveRequest() -> SaveRequest {
+        SaveRequest(snapshot: canonicalSource.makeSnapshot())
+    }
+
+    /// Applies a persistence completion without performing persistence itself.
+    ///
+    /// A successful completion moves the clean baseline to the snapshot that was
+    /// actually saved. If editing continued after the request was created, the
+    /// current text remains dirty relative to that older saved snapshot. Failed
+    /// completions leave the existing clean baseline unchanged.
+    @discardableResult
+    public mutating func applySaveCompletion(_ completion: SaveCompletion) -> Bool {
+        switch completion {
+        case .succeeded(let request):
+            cleanBaseline = request.snapshot
+            return true
+        case .failed:
+            return false
+        }
     }
 }
