@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import WorkbenchCore
 
@@ -477,6 +478,214 @@ final class IntegratedEditorFlowTests: XCTestCase {
         XCTAssertTrue(state.applySaveCompletion(.succeeded(request)))
         XCTAssertEqual(state.cleanBaselineRevision, request.snapshot.revision)
         XCTAssertEqual(state.text, "Saved")
+        XCTAssertFalse(state.isDirty)
+    }
+}
+
+final class DocumentStateAndPersistenceModelTests: XCTestCase {
+    func testNewDocumentHasNoURLNoPersistedRevisionAndIsClean() {
+        let state = EditorState()
+
+        XCTAssertNil(state.documentURL)
+        XCTAssertNil(state.persistedRevision)
+        XCTAssertFalse(state.isDirty)
+        XCTAssertEqual(state.documentGeneration, .initial)
+    }
+
+    func testDocumentWithURLCanBeRepresented() {
+        let url = URL(fileURLWithPath: "/tmp/document.md")
+        let state = EditorState(
+            initialText: "Loaded",
+            documentURL: url,
+            persistedRevision: .initial
+        )
+
+        XCTAssertEqual(state.documentURL, url)
+        XCTAssertEqual(state.persistedRevision, .initial)
+        XCTAssertFalse(state.isDirty)
+
+        var requestState = state
+        let request = requestState.makeSaveRequest()
+        XCTAssertEqual(request.destinationURL, url)
+        XCTAssertFalse(request.adoptsDestinationURLOnSuccess)
+    }
+
+    func testEditingMakesDocumentDirty() {
+        var state = EditorState(initialText: "Baseline")
+
+        state.applyEditorText("Changed")
+
+        XCTAssertTrue(state.isDirty)
+    }
+
+    func testReturningToBaselineMakesDocumentClean() {
+        var state = EditorState(initialText: "Baseline")
+
+        state.applyEditorText("Changed")
+        state.applyEditorText("Baseline")
+
+        XCTAssertFalse(state.isDirty)
+    }
+
+    func testSaveRequestFreezesSnapshotGenerationAndOperationIdentity() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Snapshot")
+
+        let request = state.makeSaveRequest()
+        state.applyEditorText("Later")
+        let secondRequest = state.makeSaveRequest()
+
+        XCTAssertEqual(request.snapshot.text, "Snapshot")
+        XCTAssertEqual(request.snapshot.revision.rawValue, 1)
+        XCTAssertEqual(request.documentGeneration, .initial)
+        XCTAssertEqual(request.operationSequence.rawValue, 1)
+        XCTAssertEqual(secondRequest.snapshot.text, "Later")
+        XCTAssertEqual(secondRequest.operationSequence.rawValue, 2)
+        XCTAssertNotEqual(request.operationID, secondRequest.operationID)
+        XCTAssertEqual(state.persistenceState.pendingOperationCount, 2)
+    }
+
+    func testSuccessfulCurrentSnapshotUpdatesCleanAndPersistedRevision() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Saved")
+        let request = state.makeSaveRequest()
+
+        XCTAssertTrue(state.applySaveCompletion(.succeeded(request)))
+
+        XCTAssertFalse(state.isDirty)
+        XCTAssertEqual(state.cleanBaselineRevision, request.snapshot.revision)
+        XCTAssertEqual(state.persistedRevision, request.snapshot.revision)
+    }
+
+    func testEditingAfterSaveRequestRemainsDirtyAfterSuccess() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Saved snapshot")
+        let request = state.makeSaveRequest()
+        state.applyEditorText("Later edit")
+
+        XCTAssertTrue(state.applySaveCompletion(.succeeded(request)))
+
+        XCTAssertTrue(state.isDirty)
+        XCTAssertEqual(state.text, "Later edit")
+        XCTAssertEqual(state.persistedRevision, request.snapshot.revision)
+    }
+
+    func testFailureDoesNotChangeState() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Unsaved")
+        let request = state.makeSaveRequest()
+        let stateBeforeCompletion = state
+
+        XCTAssertFalse(state.applySaveCompletion(.failed(request)))
+        XCTAssertEqual(state, stateBeforeCompletion)
+    }
+
+    func testCancellationDoesNotChangeState() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Unsaved")
+        let request = state.makeSaveRequest()
+        let stateBeforeCompletion = state
+
+        XCTAssertFalse(state.applySaveCompletion(.cancelled(request)))
+        XCTAssertEqual(state, stateBeforeCompletion)
+    }
+
+    func testOlderCompletionCannotMoveBaselineBackward() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Older")
+        let olderRequest = state.makeSaveRequest()
+        state.applyEditorText("Newer")
+        let newerRequest = state.makeSaveRequest()
+        XCTAssertTrue(state.applySaveCompletion(.succeeded(newerRequest)))
+        let stateBeforeOlderCompletion = state
+
+        XCTAssertFalse(state.applySaveCompletion(.succeeded(olderRequest)))
+        XCTAssertEqual(state, stateBeforeOlderCompletion)
+    }
+
+    func testCompletionFromDifferentDocumentGenerationIsRejected() {
+        var state = EditorState(initialText: "Old document")
+        state.applyEditorText("Old unsaved text")
+        let oldRequest = state.makeSaveRequest()
+        state.beginNewDocument(initialText: "New document")
+        let stateBeforeCompletion = state
+
+        XCTAssertFalse(state.applySaveCompletion(.succeeded(oldRequest)))
+        XCTAssertEqual(state, stateBeforeCompletion)
+    }
+
+    func testCompletionFromPreviousDocumentIsRejectedAfterOpen() {
+        var state = EditorState(initialText: "Old document")
+        let oldRequest = state.makeSaveRequest()
+        let openedURL = URL(fileURLWithPath: "/tmp/opened.md")
+        state.openDocument(text: "Opened document", documentURL: openedURL)
+        let stateBeforeCompletion = state
+
+        XCTAssertFalse(state.applySaveCompletion(.succeeded(oldRequest)))
+        XCTAssertEqual(state, stateBeforeCompletion)
+        XCTAssertEqual(state.documentURL, openedURL)
+        XCTAssertEqual(state.persistedRevision, CanonicalSourceRevision.initial)
+    }
+
+    func testUnknownOperationIDIsRejected() {
+        var state = EditorState(initialText: "Target")
+        state.applyEditorText("Target edit")
+        var otherState = EditorState(initialText: "Other")
+        otherState.applyEditorText("Foreign edit")
+        let unknownRequest = otherState.makeSaveRequest()
+        let stateBeforeCompletion = state
+
+        XCTAssertFalse(state.applySaveCompletion(.succeeded(unknownRequest)))
+        XCTAssertEqual(state, stateBeforeCompletion)
+    }
+
+    func testDuplicateCompletionIsIdempotent() {
+        var state = EditorState(initialText: "Baseline")
+        state.applyEditorText("Saved")
+        let request = state.makeSaveRequest()
+        XCTAssertTrue(state.applySaveCompletion(.succeeded(request)))
+        let stateAfterFirstCompletion = state
+
+        XCTAssertTrue(state.applySaveCompletion(.succeeded(request)))
+        XCTAssertEqual(state, stateAfterFirstCompletion)
+    }
+
+    func testSaveAsDoesNotAdoptURLBeforeSuccess() {
+        let originalURL = URL(fileURLWithPath: "/tmp/original.md")
+        let saveAsURL = URL(fileURLWithPath: "/tmp/replacement.md")
+        var state = EditorState(initialText: "Text", documentURL: originalURL)
+
+        let request = state.makeSaveRequest(saveAsURL: saveAsURL)
+
+        XCTAssertEqual(request.saveAsURL, saveAsURL)
+        XCTAssertEqual(request.destinationURL, saveAsURL)
+        XCTAssertTrue(request.adoptsDestinationURLOnSuccess)
+        XCTAssertEqual(state.documentURL, originalURL)
+    }
+
+    func testFailedSaveAsDoesNotAdoptURL() {
+        let originalURL = URL(fileURLWithPath: "/tmp/original.md")
+        let saveAsURL = URL(fileURLWithPath: "/tmp/replacement.md")
+        var state = EditorState(initialText: "Text", documentURL: originalURL)
+        let request = state.makeSaveRequest(saveAsURL: saveAsURL)
+        let stateBeforeCompletion = state
+
+        XCTAssertFalse(state.applySaveCompletion(.failed(request)))
+        XCTAssertEqual(state, stateBeforeCompletion)
+        XCTAssertEqual(state.documentURL, originalURL)
+    }
+
+    func testSaveAsAdoptsURLOnlyAfterSuccess() {
+        let originalURL = URL(fileURLWithPath: "/tmp/original.md")
+        let saveAsURL = URL(fileURLWithPath: "/tmp/replacement.md")
+        var state = EditorState(initialText: "Text", documentURL: originalURL)
+        state.applyEditorText("Changed")
+        let request = state.makeSaveRequest(saveAsURL: saveAsURL)
+
+        XCTAssertTrue(state.applySaveCompletion(.succeeded(request)))
+
+        XCTAssertEqual(state.documentURL, saveAsURL)
+        XCTAssertEqual(state.persistedRevision, request.snapshot.revision)
         XCTAssertFalse(state.isDirty)
     }
 }
