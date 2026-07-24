@@ -63,6 +63,205 @@ private struct ContentView: View {
 }
 
 #if canImport(AppKit)
+private final class TransactionBoundaryTextView: NSTextView {
+    private enum IMETransactionState: String {
+        case idle
+        case composing
+        case committedPendingBoundary
+    }
+
+    private var imeTransactionState: IMETransactionState = .idle
+    private var imeTransactionSequence = 0
+    private var activeIMETransaction: Int?
+
+    override func setMarkedText(
+        _ string: Any,
+        selectedRange: NSRange,
+        replacementRange: NSRange
+    ) {
+#if DEBUG
+        logLifecycleDiagnostic(method: "setMarkedText", phase: "entry")
+#endif
+        beginOrContinueIMETransaction()
+#if DEBUG
+        logLifecycleDiagnostic(method: "setMarkedText", phase: "before-super")
+#endif
+        super.setMarkedText(
+            string,
+            selectedRange: selectedRange,
+            replacementRange: replacementRange
+        )
+        imeTransactionState = .composing
+#if DEBUG
+        logLifecycleDiagnostic(method: "setMarkedText", phase: "exit")
+#endif
+    }
+
+    override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        let commitsMarkedText = hasMarkedText()
+#if DEBUG
+        logLifecycleDiagnostic(
+            method: "insertText",
+            phase: "entry",
+            commitsMarkedText: commitsMarkedText
+        )
+#endif
+
+        if !commitsMarkedText {
+            closePendingIMETransaction(reason: "before-direct-insert")
+        }
+#if DEBUG
+        logLifecycleDiagnostic(
+            method: "insertText",
+            phase: "before-super",
+            commitsMarkedText: commitsMarkedText
+        )
+#endif
+        super.insertText(insertString, replacementRange: replacementRange)
+#if DEBUG
+        logLifecycleDiagnostic(
+            method: "insertText",
+            phase: "after-super",
+            commitsMarkedText: commitsMarkedText
+        )
+#endif
+
+        if commitsMarkedText {
+            imeTransactionState = .committedPendingBoundary
+        }
+#if DEBUG
+        logLifecycleDiagnostic(
+            method: "insertText",
+            phase: "exit",
+            commitsMarkedText: commitsMarkedText
+        )
+#endif
+    }
+
+    override func unmarkText() {
+        let commitsMarkedText = hasMarkedText()
+#if DEBUG
+        logLifecycleDiagnostic(
+            method: "unmarkText",
+            phase: "entry",
+            commitsMarkedText: commitsMarkedText
+        )
+#endif
+
+        super.unmarkText()
+        if commitsMarkedText {
+            imeTransactionState = .committedPendingBoundary
+        }
+#if DEBUG
+        logLifecycleDiagnostic(
+            method: "unmarkText",
+            phase: "exit",
+            commitsMarkedText: commitsMarkedText
+        )
+#endif
+    }
+
+    override func doCommand(by selector: Selector) {
+        if imeTransactionState == .committedPendingBoundary {
+            closePendingIMETransaction(reason: "before-command:\(NSStringFromSelector(selector))")
+        }
+        super.doCommand(by: selector)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let commandFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isUndoOrRedo = commandFlags.contains(.command)
+            && event.charactersIgnoringModifiers?.lowercased() == "z"
+
+        if isUndoOrRedo {
+            closePendingIMETransaction(reason: "before-key-equivalent-undo-redo")
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    private func beginOrContinueIMETransaction() {
+        switch imeTransactionState {
+        case .idle:
+            breakUndoCoalescing()
+            imeTransactionSequence += 1
+            activeIMETransaction = imeTransactionSequence
+#if DEBUG
+            logBoundaryDiagnostic(reason: "before-composition-start")
+#endif
+        case .composing, .committedPendingBoundary:
+            break
+        }
+        imeTransactionState = .composing
+    }
+
+    private func closePendingIMETransaction(reason: String) {
+        guard imeTransactionState == .committedPendingBoundary else {
+            return
+        }
+
+        breakUndoCoalescing()
+#if DEBUG
+        logBoundaryDiagnostic(reason: reason)
+#endif
+        imeTransactionState = .idle
+        activeIMETransaction = nil
+    }
+
+#if DEBUG
+    private func logLifecycleDiagnostic(
+        method: String,
+        phase: String,
+        commitsMarkedText: Bool? = nil
+    ) {
+        let undo = undoManager
+        let message = [
+            "transaction=\(activeIMETransaction.map { String($0) } ?? "none")",
+            "state=\(imeTransactionState.rawValue)",
+            "method=\(method)",
+            "phase=\(phase)",
+            "commitCandidate=\(commitsMarkedText.map { String($0) } ?? "n/a")",
+            "hasMarkedText=\(hasMarkedText())",
+            "markedRange=\(diagnosticRange(markedRange()))",
+            "selectedRange=\(diagnosticRange(selectedRange()))",
+            "undoGroupingLevel=\(undo?.groupingLevel ?? -1)",
+            "canUndo=\(undo?.canUndo ?? false)",
+            "canRedo=\(undo?.canRedo ?? false)",
+            "isUndoing=\(undo?.isUndoing ?? false)",
+            "isRedoing=\(undo?.isRedoing ?? false)"
+        ].joined(separator: " ")
+
+        NSLog("%@", "[ST3-WP02-IME-LIFECYCLE] \(message)")
+    }
+
+    private func logBoundaryDiagnostic(reason: String) {
+        let undo = undoManager
+        let message = [
+            "transaction=\(activeIMETransaction.map { String($0) } ?? "none")",
+            "state=\(imeTransactionState.rawValue)",
+            "boundary=\(reason)",
+            "hasMarkedText=\(hasMarkedText())",
+            "markedRange=\(diagnosticRange(markedRange()))",
+            "selectedRange=\(diagnosticRange(selectedRange()))",
+            "undoGroupingLevel=\(undo?.groupingLevel ?? -1)",
+            "canUndo=\(undo?.canUndo ?? false)",
+            "canRedo=\(undo?.canRedo ?? false)",
+            "isUndoing=\(undo?.isUndoing ?? false)",
+            "isRedoing=\(undo?.isRedoing ?? false)"
+        ].joined(separator: " ")
+
+        NSLog("%@", "[ST3-WP02-IME-LIFECYCLE] \(message)")
+    }
+
+    private func diagnosticRange(_ range: NSRange) -> String {
+        guard range.location != NSNotFound else {
+            return "not-found"
+        }
+
+        return "\(range.location):\(range.length)"
+    }
+#endif
+}
+
 private struct PlatformTextView: NSViewRepresentable {
     let text: String
     let revision: CanonicalSourceRevision
@@ -80,7 +279,7 @@ private struct PlatformTextView: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = true
 
-        let textView = NSTextView(frame: .zero)
+        let textView = TransactionBoundaryTextView(frame: .zero)
         textView.delegate = context.coordinator
         textView.isEditable = true
         textView.isSelectable = true

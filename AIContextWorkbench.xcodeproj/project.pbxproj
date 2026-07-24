@@ -12,6 +12,7 @@
 		A10000000000000000000003 /* WorkbenchCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* WorkbenchCore.framework */; };
 		A10000000000000000000004 /* WorkbenchCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* WorkbenchCoreTests.swift */; };
 		A10000000000000000000005 /* WorkbenchCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* WorkbenchCore.framework */; };
+		A10000000000000000000006 /* WorkbenchCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* WorkbenchCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -30,6 +31,20 @@
 			remoteInfo = WorkbenchCore;
 		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A60000000000000000000006 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				A10000000000000000000006 /* WorkbenchCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		A20000000000000000000001 /* AIContextWorkbenchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIContextWorkbenchApp.swift; sourceTree = "<group>"; };
@@ -141,6 +156,7 @@
 				A60000000000000000000001 /* Sources */,
 				A40000000000000000000001 /* Frameworks */,
 				A60000000000000000000004 /* Resources */,
+				A60000000000000000000006 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);

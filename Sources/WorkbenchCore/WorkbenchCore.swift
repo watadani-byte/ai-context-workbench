@@ -227,6 +227,355 @@ public enum SaveCompletion: Equatable, Sendable {
     }
 }
 
+/// Advisory classification of a file-name extension.
+///
+/// Unknown extensions remain readable and writable. The classification exists
+/// only so a later UI boundary can inform the user without changing persistence
+/// behavior.
+public enum PersistenceExtensionAdvisory: Equatable, Sendable {
+    case supported
+    case unknown
+}
+
+/// Persistence failures that callers may handle without interpreting
+/// Foundation-specific error codes.
+public enum PersistenceFailureKind: Equatable, Sendable {
+    case invalidFileURL
+    case fileNotFound
+    case permissionDenied
+    case readFailure
+    case invalidUTF8
+    case unsupportedBOM
+    case unsupportedXMLDeclaredEncoding
+    case writeFailure
+    case atomicReplacementFailure
+}
+
+/// Structured persistence failure with optional diagnostic information from
+/// the underlying file-system operation.
+public struct PersistenceFailure: Equatable, Sendable {
+    public let kind: PersistenceFailureKind
+    public let underlyingDomain: String?
+    public let underlyingCode: Int?
+    public let diagnostic: String?
+
+    public init(
+        kind: PersistenceFailureKind,
+        underlyingDomain: String? = nil,
+        underlyingCode: Int? = nil,
+        diagnostic: String? = nil
+    ) {
+        self.kind = kind
+        self.underlyingDomain = underlyingDomain
+        self.underlyingCode = underlyingCode
+        self.diagnostic = diagnostic
+    }
+}
+
+/// Complete text decoded from one file.
+public struct PersistenceReadSuccess: Equatable, Sendable {
+    public let sourceFileURL: URL
+    public let text: String
+    public let hadUTF8BOM: Bool
+    public let extensionAdvisory: PersistenceExtensionAdvisory
+
+    public init(
+        sourceFileURL: URL,
+        text: String,
+        hadUTF8BOM: Bool,
+        extensionAdvisory: PersistenceExtensionAdvisory
+    ) {
+        self.sourceFileURL = sourceFileURL
+        self.text = text
+        self.hadUTF8BOM = hadUTF8BOM
+        self.extensionAdvisory = extensionAdvisory
+    }
+}
+
+/// Result of a read operation. A failed result cannot expose partial text.
+public enum PersistenceReadResult: Equatable, Sendable {
+    case success(PersistenceReadSuccess)
+    case failure(PersistenceFailure)
+    case cancellation(sourceFileURL: URL)
+}
+
+/// Outcome of a write operation before any completion-adoption decision.
+public enum PersistenceWriteOutcome: Equatable, Sendable {
+    case success
+    case failure(PersistenceFailure)
+    case cancellation
+}
+
+/// Persistence-layer completion carrying the identity of the immutable Stage 2
+/// save request. This value does not adopt the completion into document state.
+public struct PersistenceWriteCompletion: Equatable, Sendable {
+    public let operationID: PersistenceOperationID
+    public let operationSequence: PersistenceOperationSequence
+    public let documentGeneration: DocumentGeneration
+    public let snapshotRevision: CanonicalSourceRevision
+    public let targetFileURL: URL?
+    public let outcome: PersistenceWriteOutcome
+
+    public init(
+        request: SaveRequest,
+        targetFileURL: URL?,
+        outcome: PersistenceWriteOutcome
+    ) {
+        operationID = request.operationID
+        operationSequence = request.operationSequence
+        documentGeneration = request.documentGeneration
+        snapshotRevision = request.snapshot.revision
+        self.targetFileURL = targetFileURL
+        self.outcome = outcome
+    }
+}
+
+/// UI-independent UTF-8 file persistence boundary.
+///
+/// Reads return text only after the complete byte sequence satisfies the
+/// approved encoding policy. Writes consume only the immutable snapshot held
+/// by `SaveRequest` and always request Foundation's atomic write behavior.
+/// This service has no reference to live canonical or document state.
+public struct PersistenceService {
+    private static let supportedExtensions: Set<String> = [
+        "md", "markdown", "txt", "xmd", "xml", "yaml", "yml"
+    ]
+
+    private let readData: (URL) throws -> Data
+    private let writeDataAtomically: (Data, URL) throws -> Void
+    private let fileExists: (URL) -> Bool
+
+    public init() {
+        readData = { try Data(contentsOf: $0) }
+        writeDataAtomically = { data, url in
+            try data.write(to: url, options: [.atomic])
+        }
+        fileExists = { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// Test seam for deterministic file-system failure coverage.
+    init(
+        readData: @escaping (URL) throws -> Data,
+        writeDataAtomically: @escaping (Data, URL) throws -> Void,
+        fileExists: @escaping (URL) -> Bool
+    ) {
+        self.readData = readData
+        self.writeDataAtomically = writeDataAtomically
+        self.fileExists = fileExists
+    }
+
+    public func extensionAdvisory(for fileURL: URL) -> PersistenceExtensionAdvisory {
+        let fileExtension = fileURL.pathExtension.lowercased()
+        return Self.supportedExtensions.contains(fileExtension) ? .supported : .unknown
+    }
+
+    public func read(from sourceFileURL: URL) -> PersistenceReadResult {
+        guard sourceFileURL.isFileURL else {
+            return .failure(PersistenceFailure(kind: .invalidFileURL))
+        }
+
+        let data: Data
+        do {
+            data = try readData(sourceFileURL)
+        } catch {
+            return .failure(
+                classifyFileSystemFailure(
+                    error,
+                    fallback: .readFailure,
+                    targetExistedBeforeWrite: false
+                )
+            )
+        }
+
+        let inspectedData: Data
+        let hadUTF8BOM: Bool
+        switch inspectBOM(in: data) {
+        case .utf8:
+            inspectedData = Data(data.dropFirst(3))
+            hadUTF8BOM = true
+        case .unsupported:
+            return .failure(PersistenceFailure(kind: .unsupportedBOM))
+        case .none:
+            inspectedData = data
+            hadUTF8BOM = false
+        }
+
+        guard let text = String(data: inspectedData, encoding: .utf8) else {
+            return .failure(PersistenceFailure(kind: .invalidUTF8))
+        }
+
+        if sourceFileURL.pathExtension.caseInsensitiveCompare("xml") == .orderedSame,
+           let declaredEncoding = incompatibleXMLDeclaredEncoding(in: text) {
+            return .failure(
+                PersistenceFailure(
+                    kind: .unsupportedXMLDeclaredEncoding,
+                    diagnostic: "Declared encoding: \(declaredEncoding)"
+                )
+            )
+        }
+
+        return .success(
+            PersistenceReadSuccess(
+                sourceFileURL: sourceFileURL,
+                text: text,
+                hadUTF8BOM: hadUTF8BOM,
+                extensionAdvisory: extensionAdvisory(for: sourceFileURL)
+            )
+        )
+    }
+
+    public func write(_ request: SaveRequest) -> PersistenceWriteCompletion {
+        guard let targetFileURL = request.destinationURL,
+              targetFileURL.isFileURL else {
+            return PersistenceWriteCompletion(
+                request: request,
+                targetFileURL: request.destinationURL,
+                outcome: .failure(PersistenceFailure(kind: .invalidFileURL))
+            )
+        }
+
+        if targetFileURL.pathExtension.caseInsensitiveCompare("xml") == .orderedSame,
+           let declaredEncoding = incompatibleXMLDeclaredEncoding(in: request.snapshot.text) {
+            return PersistenceWriteCompletion(
+                request: request,
+                targetFileURL: targetFileURL,
+                outcome: .failure(
+                    PersistenceFailure(
+                        kind: .unsupportedXMLDeclaredEncoding,
+                        diagnostic: "Declared encoding: \(declaredEncoding)"
+                    )
+                )
+            )
+        }
+
+        let targetExistedBeforeWrite = fileExists(targetFileURL)
+        let data = Data(request.snapshot.text.utf8)
+
+        do {
+            try writeDataAtomically(data, targetFileURL)
+            return PersistenceWriteCompletion(
+                request: request,
+                targetFileURL: targetFileURL,
+                outcome: .success
+            )
+        } catch {
+            return PersistenceWriteCompletion(
+                request: request,
+                targetFileURL: targetFileURL,
+                outcome: .failure(
+                    classifyFileSystemFailure(
+                        error,
+                        fallback: .writeFailure,
+                        targetExistedBeforeWrite: targetExistedBeforeWrite
+                    )
+                )
+            )
+        }
+    }
+
+    private enum BOMInspection {
+        case none
+        case utf8
+        case unsupported
+    }
+
+    private func inspectBOM(in data: Data) -> BOMInspection {
+        let bytes = Array(data.prefix(4))
+
+        if bytes.starts(with: [0xEF, 0xBB, 0xBF]) {
+            return .utf8
+        }
+
+        let unsupportedBOMs: [[UInt8]] = [
+            [0x00, 0x00, 0xFE, 0xFF],
+            [0xFF, 0xFE, 0x00, 0x00],
+            [0x00, 0x00, 0xFF, 0xFE],
+            [0xFE, 0xFF, 0x00, 0x00],
+            [0xFE, 0xFF],
+            [0xFF, 0xFE]
+        ]
+
+        return unsupportedBOMs.contains(where: { bytes.starts(with: $0) })
+            ? .unsupported
+            : .none
+    }
+
+    private func incompatibleXMLDeclaredEncoding(in text: String) -> String? {
+        let fullRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        let declarationPattern = #"(?is)\A\s*<\?xml\b.*?\?>"#
+        guard let declarationExpression = try? NSRegularExpression(
+            pattern: declarationPattern
+        ),
+        let declarationMatch = declarationExpression.firstMatch(
+            in: text,
+            range: fullRange
+        ),
+        let declarationRange = Range(declarationMatch.range, in: text) else {
+            return nil
+        }
+
+        let declaration = String(text[declarationRange])
+        let declarationNSRange = NSRange(
+            declaration.startIndex..<declaration.endIndex,
+            in: declaration
+        )
+        let encodingPattern = #"\bencoding\s*=\s*["']\s*([^"']+?)\s*["']"#
+        guard let encodingExpression = try? NSRegularExpression(
+            pattern: encodingPattern,
+            options: [.caseInsensitive]
+        ),
+        let encodingMatch = encodingExpression.firstMatch(
+            in: declaration,
+            range: declarationNSRange
+        ),
+        encodingMatch.numberOfRanges > 1,
+        let encodingRange = Range(encodingMatch.range(at: 1), in: declaration) else {
+            return nil
+        }
+
+        let declaredEncoding = String(declaration[encodingRange])
+        return declaredEncoding.caseInsensitiveCompare("UTF-8") == .orderedSame
+            ? nil
+            : declaredEncoding
+    }
+
+    private func classifyFileSystemFailure(
+        _ error: Error,
+        fallback: PersistenceFailureKind,
+        targetExistedBeforeWrite: Bool
+    ) -> PersistenceFailure {
+        let nsError = error as NSError
+        let kind: PersistenceFailureKind
+
+        if nsError.domain == NSCocoaErrorDomain,
+           [NSFileNoSuchFileError, NSFileReadNoSuchFileError]
+            .contains(nsError.code) {
+            kind = .fileNotFound
+        } else if nsError.domain == NSCocoaErrorDomain,
+                  [NSFileReadNoPermissionError, NSFileWriteNoPermissionError]
+                    .contains(nsError.code) {
+            kind = .permissionDenied
+        } else if nsError.domain == NSPOSIXErrorDomain,
+                  nsError.code == 2 {
+            kind = .fileNotFound
+        } else if nsError.domain == NSPOSIXErrorDomain,
+                  [1, 13].contains(nsError.code) {
+            kind = .permissionDenied
+        } else if fallback == .writeFailure && targetExistedBeforeWrite {
+            kind = .atomicReplacementFailure
+        } else {
+            kind = fallback
+        }
+
+        return PersistenceFailure(
+            kind: kind,
+            underlyingDomain: nsError.domain,
+            underlyingCode: nsError.code,
+            diagnostic: nsError.localizedDescription
+        )
+    }
+}
+
 /// Persistence-related facts about the current document.
 public struct DocumentState: Equatable, Sendable {
     public private(set) var documentURL: URL?

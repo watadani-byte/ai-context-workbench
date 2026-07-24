@@ -689,3 +689,580 @@ final class DocumentStateAndPersistenceModelTests: XCTestCase {
         XCTAssertFalse(state.isDirty)
     }
 }
+
+final class PersistenceServiceTests: XCTestCase {
+    private enum TestFailure: Error {
+        case forcedReadFailure
+        case forcedWriteFailure
+    }
+
+    private func makeTemporaryDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        return directory
+    }
+
+    private func makeRequest(
+        text: String,
+        destinationURL: URL,
+        revision: UInt64 = 1
+    ) -> SaveRequest {
+        SaveRequest(
+            snapshot: CanonicalSourceSnapshot(
+                text: text,
+                revision: CanonicalSourceRevision(rawValue: revision)
+            ),
+            documentGeneration: DocumentGeneration(rawValue: 3),
+            operationID: PersistenceOperationID(),
+            operationSequence: PersistenceOperationSequence(rawValue: 7),
+            destinationURL: destinationURL
+        )
+    }
+
+    private func readSuccess(
+        _ result: PersistenceReadResult,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> PersistenceReadSuccess? {
+        guard case .success(let success) = result else {
+            XCTFail("Expected read success, got \(result)", file: file, line: line)
+            return nil
+        }
+        return success
+    }
+
+    private func readFailure(
+        _ result: PersistenceReadResult,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> PersistenceFailure? {
+        guard case .failure(let failure) = result else {
+            XCTFail("Expected read failure, got \(result)", file: file, line: line)
+            return nil
+        }
+        return failure
+    }
+
+    private func writeFailure(
+        _ completion: PersistenceWriteCompletion,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> PersistenceFailure? {
+        guard case .failure(let failure) = completion.outcome else {
+            XCTFail("Expected write failure, got \(completion)", file: file, line: line)
+            return nil
+        }
+        return failure
+    }
+
+    func testReadsUTF8FileExactly() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("document.md")
+        let expected = "Hello, 日本語"
+        try Data(expected.utf8).write(to: fileURL)
+
+        let success = readSuccess(PersistenceService().read(from: fileURL))
+
+        XCTAssertEqual(success?.sourceFileURL, fileURL)
+        XCTAssertEqual(success?.text, expected)
+        XCTAssertEqual(success?.hadUTF8BOM, false)
+        XCTAssertEqual(success?.extensionAdvisory, .supported)
+    }
+
+    func testReadsEmptyFileAsEmptyText() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("empty.txt")
+        try Data().write(to: fileURL)
+
+        XCTAssertEqual(
+            readSuccess(PersistenceService().read(from: fileURL))?.text,
+            ""
+        )
+    }
+
+    func testRemovesUTF8BOMOnRead() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("bom.xmd")
+        try Data([0xEF, 0xBB, 0xBF] + Array("Text".utf8)).write(to: fileURL)
+
+        let success = readSuccess(PersistenceService().read(from: fileURL))
+
+        XCTAssertEqual(success?.text, "Text")
+        XCTAssertEqual(success?.hadUTF8BOM, true)
+    }
+
+    func testRejectsInvalidUTF8WithoutLossyConversion() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("invalid.md")
+        try Data([0x48, 0x69, 0xFF]).write(to: fileURL)
+
+        let failure = readFailure(PersistenceService().read(from: fileURL))
+
+        XCTAssertEqual(failure?.kind, .invalidUTF8)
+    }
+
+    func testMissingFileReturnsStructuredFailure() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("missing.md")
+
+        let failure = readFailure(PersistenceService().read(from: fileURL))
+
+        XCTAssertEqual(failure?.kind, .fileNotFound)
+        XCTAssertNotNil(failure?.underlyingDomain)
+        XCTAssertNotNil(failure?.underlyingCode)
+    }
+
+    func testRejectsNonFileURL() {
+        let result = PersistenceService().read(
+            from: URL(string: "https://example.com/document.md")!
+        )
+
+        XCTAssertEqual(readFailure(result)?.kind, .invalidFileURL)
+    }
+
+    func testReadFailureIsStructuredAndReturnsNoPartialText() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("unreadable.md")
+        try Data("partial".utf8).write(to: fileURL)
+        let service = PersistenceService(
+            readData: { _ in throw TestFailure.forcedReadFailure },
+            writeDataAtomically: { data, url in
+                try data.write(to: url, options: [.atomic])
+            },
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) }
+        )
+
+        let result = service.read(from: fileURL)
+
+        XCTAssertEqual(readFailure(result)?.kind, .readFailure)
+        if case .success = result {
+            XCTFail("A failed read exposed adoptable text")
+        }
+    }
+
+    func testPermissionDeniedIsStructured() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("protected.md")
+        try Data("Text".utf8).write(to: fileURL)
+        let service = PersistenceService(
+            readData: { _ in
+                throw NSError(
+                    domain: NSCocoaErrorDomain,
+                    code: NSFileReadNoPermissionError
+                )
+            },
+            writeDataAtomically: { data, url in
+                try data.write(to: url, options: [.atomic])
+            },
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) }
+        )
+
+        XCTAssertEqual(
+            readFailure(service.read(from: fileURL))?.kind,
+            .permissionDenied
+        )
+    }
+
+    func testPreservesLFOnRead() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("lf.txt")
+        let text = "a\nb\n"
+        try Data(text.utf8).write(to: fileURL)
+
+        XCTAssertEqual(readSuccess(PersistenceService().read(from: fileURL))?.text, text)
+    }
+
+    func testPreservesCRLFOnRead() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("crlf.txt")
+        let text = "a\r\nb\r\n"
+        try Data(text.utf8).write(to: fileURL)
+
+        XCTAssertEqual(readSuccess(PersistenceService().read(from: fileURL))?.text, text)
+    }
+
+    func testPreservesCROnRead() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("cr.txt")
+        let text = "a\rb\r"
+        try Data(text.utf8).write(to: fileURL)
+
+        XCTAssertEqual(readSuccess(PersistenceService().read(from: fileURL))?.text, text)
+    }
+
+    func testWritesSnapshotToNewFile() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("new.md")
+        let request = makeRequest(text: "Snapshot", destinationURL: fileURL)
+
+        let completion = PersistenceService().write(request)
+
+        XCTAssertEqual(completion.outcome, .success)
+        XCTAssertEqual(completion.operationID, request.operationID)
+        XCTAssertEqual(completion.operationSequence, request.operationSequence)
+        XCTAssertEqual(completion.documentGeneration, request.documentGeneration)
+        XCTAssertEqual(completion.snapshotRevision, request.snapshot.revision)
+        XCTAssertEqual(completion.targetFileURL, fileURL)
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data("Snapshot".utf8))
+    }
+
+    func testAtomicallyUpdatesExistingFile() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("existing.md")
+        try Data("Before".utf8).write(to: fileURL)
+        let request = makeRequest(text: "After", destinationURL: fileURL)
+
+        let completion = PersistenceService().write(request)
+
+        XCTAssertEqual(completion.outcome, .success)
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data("After".utf8))
+    }
+
+    func testWritesEmptySnapshot() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("empty.md")
+
+        let completion = PersistenceService().write(
+            makeRequest(text: "", destinationURL: fileURL)
+        )
+
+        XCTAssertEqual(completion.outcome, .success)
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data())
+    }
+
+    func testWritesUnicodeAsUTF8() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("unicode.md")
+        let text = "日本語 📝 café"
+
+        let completion = PersistenceService().write(
+            makeRequest(text: text, destinationURL: fileURL)
+        )
+
+        XCTAssertEqual(completion.outcome, .success)
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data(text.utf8))
+    }
+
+    func testDoesNotAddUTF8BOMOnWrite() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("no-bom.md")
+
+        XCTAssertEqual(
+            PersistenceService().write(
+                makeRequest(text: "Text", destinationURL: fileURL)
+            ).outcome,
+            .success
+        )
+
+        let data = try Data(contentsOf: fileURL)
+        XCTAssertFalse(Array(data.prefix(3)) == [0xEF, 0xBB, 0xBF])
+    }
+
+    func testWriteFailureIsStructured() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("failure.md")
+        let service = PersistenceService(
+            readData: { try Data(contentsOf: $0) },
+            writeDataAtomically: { _, _ in throw TestFailure.forcedWriteFailure },
+            fileExists: { _ in false }
+        )
+
+        let failure = writeFailure(
+            service.write(makeRequest(text: "Text", destinationURL: fileURL))
+        )
+
+        XCTAssertEqual(failure?.kind, .writeFailure)
+        XCTAssertNotNil(failure?.underlyingDomain)
+        XCTAssertNotNil(failure?.underlyingCode)
+    }
+
+    func testWriteUsesFrozenSnapshotDespiteLaterEditing() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("snapshot.md")
+        var state = EditorState(initialText: "Before", documentURL: fileURL)
+        state.applyEditorText("Frozen")
+        let request = state.makeSaveRequest()
+        state.applyEditorText("Later edit")
+
+        let completion = PersistenceService().write(request)
+
+        XCTAssertEqual(completion.outcome, .success)
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data("Frozen".utf8))
+        XCTAssertEqual(state.text, "Later edit")
+        XCTAssertTrue(state.isDirty)
+    }
+
+    func testDoesNotAddWorkbenchMetadata() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("plain.xmd")
+        let text = "<document>\nBody\n</document>"
+
+        XCTAssertEqual(
+            PersistenceService().write(
+                makeRequest(text: text, destinationURL: fileURL)
+            ).outcome,
+            .success
+        )
+
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data(text.utf8))
+    }
+
+    func testPreservesLineEndingsOnWrite() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("line-endings.txt")
+        let text = "lf\ncrlf\r\ncr\r"
+
+        XCTAssertEqual(
+            PersistenceService().write(
+                makeRequest(text: text, destinationURL: fileURL)
+            ).outcome,
+            .success
+        )
+
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data(text.utf8))
+    }
+
+    func testAtomicReplacementFailureIsNotReportedAsSuccess() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("existing.md")
+        try Data("Original".utf8).write(to: fileURL)
+        let service = PersistenceService(
+            readData: { try Data(contentsOf: $0) },
+            writeDataAtomically: { _, _ in throw TestFailure.forcedWriteFailure },
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) }
+        )
+
+        let completion = service.write(
+            makeRequest(text: "Replacement", destinationURL: fileURL)
+        )
+
+        XCTAssertEqual(writeFailure(completion)?.kind, .atomicReplacementFailure)
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data("Original".utf8))
+    }
+
+    func testReadsUTF8XMLAsOrdinaryText() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("document.xml")
+        let text = #"<?xml version="1.0" encoding="UTF-8"?><root>日本語</root>"#
+        try Data(text.utf8).write(to: fileURL)
+
+        XCTAssertEqual(readSuccess(PersistenceService().read(from: fileURL))?.text, text)
+    }
+
+    func testRoundTripsXMLAsOrdinaryText() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sourceURL = directory.appendingPathComponent("source.xml")
+        let targetURL = directory.appendingPathComponent("target.xml")
+        let text = "<?xml version=\"1.0\"?>\r\n<root>Body</root>\r\n"
+        try Data(text.utf8).write(to: sourceURL)
+        let read = try XCTUnwrap(
+            readSuccess(PersistenceService().read(from: sourceURL))
+        )
+
+        let completion = PersistenceService().write(
+            makeRequest(text: read.text, destinationURL: targetURL)
+        )
+
+        XCTAssertEqual(completion.outcome, .success)
+        XCTAssertEqual(try Data(contentsOf: targetURL), Data(text.utf8))
+    }
+
+    func testDoesNotInsertXMLDeclaration() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("no-declaration.xml")
+        let text = "<root>Body</root>"
+
+        XCTAssertEqual(
+            PersistenceService().write(
+                makeRequest(text: text, destinationURL: fileURL)
+            ).outcome,
+            .success
+        )
+
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data(text.utf8))
+    }
+
+    func testDoesNotRewriteXMLDeclaration() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("declaration.xml")
+        let text = #"<?xml version='1.0' encoding='utf-8'?><root/>"#
+
+        XCTAssertEqual(
+            PersistenceService().write(
+                makeRequest(text: text, destinationURL: fileURL)
+            ).outcome,
+            .success
+        )
+
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data(text.utf8))
+    }
+
+    func testAcceptsCaseInsensitiveUTF8XMLDeclaration() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("case.XML")
+        let text = #"<?xml version="1.0" encoding="uTf-8"?><root/>"#
+        try Data(text.utf8).write(to: fileURL)
+
+        XCTAssertEqual(readSuccess(PersistenceService().read(from: fileURL))?.text, text)
+    }
+
+    func testRejectsExplicitNonUTF8XMLDeclaration() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("latin.xml")
+        let text = #"<?xml version="1.0" encoding="ISO-8859-1"?><root/>"#
+        try Data(text.utf8).write(to: fileURL)
+
+        let failure = readFailure(PersistenceService().read(from: fileURL))
+
+        XCTAssertEqual(failure?.kind, .unsupportedXMLDeclaredEncoding)
+        XCTAssertEqual(failure?.diagnostic, "Declared encoding: ISO-8859-1")
+    }
+
+    func testRejectsWritingExplicitNonUTF8XMLDeclaration() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("latin.xml")
+        let text = #"<?xml version="1.0" encoding="ISO-8859-1"?><root/>"#
+
+        let completion = PersistenceService().write(
+            makeRequest(text: text, destinationURL: fileURL)
+        )
+
+        XCTAssertEqual(
+            writeFailure(completion)?.kind,
+            .unsupportedXMLDeclaredEncoding
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
+    func testRejectsUTF16AndUTF32BOMs() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let utf16URL = directory.appendingPathComponent("utf16.xml")
+        let utf32URL = directory.appendingPathComponent("utf32.xml")
+        try Data([0xFF, 0xFE, 0x3C, 0x00]).write(to: utf16URL)
+        try Data([0x00, 0x00, 0xFE, 0xFF]).write(to: utf32URL)
+
+        XCTAssertEqual(
+            readFailure(PersistenceService().read(from: utf16URL))?.kind,
+            .unsupportedBOM
+        )
+        XCTAssertEqual(
+            readFailure(PersistenceService().read(from: utf32URL))?.kind,
+            .unsupportedBOM
+        )
+    }
+
+    func testDoesNotParseDTDOrResolveExternalEntity() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("entity.xml")
+        let text = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE root [<!ENTITY external SYSTEM "file:///not-read.txt">]>
+        <root>&external;</root>
+        """
+        try Data(text.utf8).write(to: fileURL)
+
+        let success = readSuccess(PersistenceService().read(from: fileURL))
+
+        XCTAssertEqual(success?.text, text)
+        XCTAssertTrue(success?.text.contains("&external;") == true)
+    }
+
+    func testSupportedExtensionMatchingIsCaseInsensitive() {
+        let service = PersistenceService()
+
+        XCTAssertEqual(
+            service.extensionAdvisory(
+                for: URL(fileURLWithPath: "/tmp/document.MarkDown")
+            ),
+            .supported
+        )
+        XCTAssertEqual(
+            service.extensionAdvisory(
+                for: URL(fileURLWithPath: "/tmp/document.XML")
+            ),
+            .supported
+        )
+    }
+
+    func testUnknownExtensionIsAdvisoryAndNonBlocking() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("document.custom")
+        try Data("Text".utf8).write(to: fileURL)
+
+        let success = readSuccess(PersistenceService().read(from: fileURL))
+
+        XCTAssertEqual(success?.text, "Text")
+        XCTAssertEqual(success?.extensionAdvisory, .unknown)
+    }
+
+    func testOutcomeModelsDistinguishCancellation() {
+        let fileURL = URL(fileURLWithPath: "/tmp/document.md")
+        let request = makeRequest(text: "Text", destinationURL: fileURL)
+        let readResult = PersistenceReadResult.cancellation(sourceFileURL: fileURL)
+        let writeCompletion = PersistenceWriteCompletion(
+            request: request,
+            targetFileURL: fileURL,
+            outcome: .cancellation
+        )
+
+        XCTAssertEqual(
+            readResult,
+            .cancellation(sourceFileURL: fileURL)
+        )
+        XCTAssertEqual(writeCompletion.outcome, .cancellation)
+    }
+
+    func testWriteRejectsMissingOrNonFileTarget() {
+        let missingTargetRequest = SaveRequest(
+            snapshot: CanonicalSourceSnapshot(text: "Text", revision: .initial)
+        )
+        let nonFileTarget = URL(string: "https://example.com/document.md")!
+        let nonFileRequest = makeRequest(
+            text: "Text",
+            destinationURL: nonFileTarget
+        )
+
+        XCTAssertEqual(
+            writeFailure(PersistenceService().write(missingTargetRequest))?.kind,
+            .invalidFileURL
+        )
+        XCTAssertEqual(
+            writeFailure(PersistenceService().write(nonFileRequest))?.kind,
+            .invalidFileURL
+        )
+    }
+}
