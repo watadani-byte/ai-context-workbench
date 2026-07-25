@@ -180,6 +180,26 @@ public struct DocumentGeneration: RawRepresentable, Equatable, Hashable, Compara
     }
 }
 
+/// Immutable registration for one persistence read operation.
+public struct PersistenceReadRequest: Equatable, Sendable {
+    public let sourceFileURL: URL
+    public let documentGeneration: DocumentGeneration
+    public let operationID: PersistenceOperationID
+    public let operationSequence: PersistenceOperationSequence
+
+    public init(
+        sourceFileURL: URL,
+        documentGeneration: DocumentGeneration,
+        operationID: PersistenceOperationID = PersistenceOperationID(),
+        operationSequence: PersistenceOperationSequence
+    ) {
+        self.sourceFileURL = sourceFileURL
+        self.documentGeneration = documentGeneration
+        self.operationID = operationID
+        self.operationSequence = operationSequence
+    }
+}
+
 /// Immutable request handed from canonical/editor state to the persistence boundary.
 ///
 /// Snapshot revision, operation order, and document generation remain distinct:
@@ -299,6 +319,42 @@ public enum PersistenceReadResult: Equatable, Sendable {
     case cancellation(sourceFileURL: URL)
 }
 
+/// Persistence-layer completion carrying the identity of a registered read.
+///
+/// The state model, rather than the service, decides whether this completion
+/// still belongs to the current document and may be adopted.
+public struct PersistenceReadCompletion: Equatable, Sendable {
+    public let operationID: PersistenceOperationID
+    public let operationSequence: PersistenceOperationSequence
+    public let documentGeneration: DocumentGeneration
+    public let sourceFileURL: URL
+    public let result: PersistenceReadResult
+
+    public init(
+        operationID: PersistenceOperationID,
+        operationSequence: PersistenceOperationSequence,
+        documentGeneration: DocumentGeneration,
+        sourceFileURL: URL,
+        result: PersistenceReadResult
+    ) {
+        self.operationID = operationID
+        self.operationSequence = operationSequence
+        self.documentGeneration = documentGeneration
+        self.sourceFileURL = sourceFileURL
+        self.result = result
+    }
+
+    public init(request: PersistenceReadRequest, result: PersistenceReadResult) {
+        self.init(
+            operationID: request.operationID,
+            operationSequence: request.operationSequence,
+            documentGeneration: request.documentGeneration,
+            sourceFileURL: request.sourceFileURL,
+            result: result
+        )
+    }
+}
+
 /// Outcome of a write operation before any completion-adoption decision.
 public enum PersistenceWriteOutcome: Equatable, Sendable {
     case success
@@ -325,6 +381,22 @@ public struct PersistenceWriteCompletion: Equatable, Sendable {
         operationSequence = request.operationSequence
         documentGeneration = request.documentGeneration
         snapshotRevision = request.snapshot.revision
+        self.targetFileURL = targetFileURL
+        self.outcome = outcome
+    }
+
+    public init(
+        operationID: PersistenceOperationID,
+        operationSequence: PersistenceOperationSequence,
+        documentGeneration: DocumentGeneration,
+        snapshotRevision: CanonicalSourceRevision,
+        targetFileURL: URL?,
+        outcome: PersistenceWriteOutcome
+    ) {
+        self.operationID = operationID
+        self.operationSequence = operationSequence
+        self.documentGeneration = documentGeneration
+        self.snapshotRevision = snapshotRevision
         self.targetFileURL = targetFileURL
         self.outcome = outcome
     }
@@ -421,6 +493,13 @@ public struct PersistenceService {
                 hadUTF8BOM: hadUTF8BOM,
                 extensionAdvisory: extensionAdvisory(for: sourceFileURL)
             )
+        )
+    }
+
+    public func read(_ request: PersistenceReadRequest) -> PersistenceReadCompletion {
+        PersistenceReadCompletion(
+            request: request,
+            result: read(from: request.sourceFileURL)
         )
     }
 
@@ -611,13 +690,14 @@ public struct DocumentState: Equatable, Sendable {
 /// Tracks persistence operations independently from canonical and document state.
 public struct PersistenceState: Equatable, Sendable {
     private var nextOperationSequence: PersistenceOperationSequence = .initial
-    private var pendingOperations: [PersistenceOperationID: SaveRequest] = [:]
+    private var pendingReadOperations: [PersistenceOperationID: PersistenceReadRequest] = [:]
+    private var pendingSaveOperations: [PersistenceOperationID: SaveRequest] = [:]
     private var lastAcceptedRequest: SaveRequest?
 
     public init() {}
 
     public var pendingOperationCount: Int {
-        pendingOperations.count
+        pendingReadOperations.count + pendingSaveOperations.count
     }
 
     public var lastAcceptedSave: SaveRequest? {
@@ -639,25 +719,85 @@ public struct PersistenceState: Equatable, Sendable {
             destinationURL: saveAsURL ?? currentDocumentURL,
             adoptsDestinationURLOnSuccess: saveAsURL != nil
         )
-        pendingOperations[request.operationID] = request
+        pendingSaveOperations[request.operationID] = request
         return request
     }
 
-    fileprivate func isKnown(_ request: SaveRequest) -> Bool {
-        pendingOperations[request.operationID] == request
-    }
+    fileprivate mutating func makeReadRequest(
+        sourceFileURL: URL,
+        documentGeneration: DocumentGeneration
+    ) -> PersistenceReadRequest {
+        nextOperationSequence = nextOperationSequence.advanced()
+        let request = PersistenceReadRequest(
+            sourceFileURL: sourceFileURL,
+            documentGeneration: documentGeneration,
+            operationSequence: nextOperationSequence
+        )
 
-    fileprivate func isAcceptedDuplicate(_ request: SaveRequest) -> Bool {
-        lastAcceptedRequest == request
+        // A later open candidate supersedes any earlier candidate, while save
+        // operations for the current document remain valid unless a read is
+        // successfully adopted.
+        pendingReadOperations.removeAll()
+        pendingReadOperations[request.operationID] = request
+        return request
     }
 
     fileprivate mutating func accept(_ request: SaveRequest) {
-        pendingOperations[request.operationID] = nil
+        pendingSaveOperations[request.operationID] = nil
         lastAcceptedRequest = request
     }
 
+    fileprivate mutating func complete(_ request: SaveRequest) {
+        pendingSaveOperations[request.operationID] = nil
+    }
+
+    fileprivate func registeredRead(
+        matching completion: PersistenceReadCompletion
+    ) -> PersistenceReadRequest? {
+        guard let request = pendingReadOperations[completion.operationID],
+              request.operationSequence == completion.operationSequence,
+              request.documentGeneration == completion.documentGeneration,
+              request.sourceFileURL == completion.sourceFileURL else {
+            return nil
+        }
+        return request
+    }
+
+    fileprivate mutating func complete(_ request: PersistenceReadRequest) {
+        pendingReadOperations[request.operationID] = nil
+    }
+
+    fileprivate func registeredSave(
+        matching completion: PersistenceWriteCompletion
+    ) -> SaveRequest? {
+        guard let request = pendingSaveOperations[completion.operationID],
+              request.operationSequence == completion.operationSequence,
+              request.documentGeneration == completion.documentGeneration,
+              request.snapshot.revision == completion.snapshotRevision,
+              request.destinationURL == completion.targetFileURL else {
+            return nil
+        }
+        return request
+    }
+
+    fileprivate func isAcceptedDuplicate(
+        _ completion: PersistenceWriteCompletion
+    ) -> Bool {
+        guard case .success = completion.outcome,
+              let request = lastAcceptedRequest else {
+            return false
+        }
+
+        return request.operationID == completion.operationID
+            && request.operationSequence == completion.operationSequence
+            && request.documentGeneration == completion.documentGeneration
+            && request.snapshot.revision == completion.snapshotRevision
+            && request.destinationURL == completion.targetFileURL
+    }
+
     fileprivate mutating func invalidateForDocumentChange() {
-        pendingOperations.removeAll()
+        pendingReadOperations.removeAll()
+        pendingSaveOperations.removeAll()
         lastAcceptedRequest = nil
     }
 }
@@ -754,6 +894,17 @@ public struct EditorState: Equatable, Sendable {
         )
     }
 
+    /// Registers an operation-scoped candidate read without changing the
+    /// current document or adopting the candidate URL.
+    public mutating func makeReadRequest(
+        sourceFileURL: URL
+    ) -> PersistenceReadRequest {
+        persistenceState.makeReadRequest(
+            sourceFileURL: sourceFileURL,
+            documentGeneration: documentState.generation
+        )
+    }
+
     /// Starts a new unsaved document and invalidates operations from the prior
     /// document lifetime without performing file-system or UI work.
     public mutating func beginNewDocument(initialText: String = "") {
@@ -805,22 +956,83 @@ public struct EditorState: Equatable, Sendable {
     /// out-of-order persistence response cannot move the baseline backward.
     @discardableResult
     public mutating func applySaveCompletion(_ completion: SaveCompletion) -> Bool {
-        let request = completion.request
+        switch completion {
+        case .succeeded(let request):
+            return applyWriteCompletion(
+                PersistenceWriteCompletion(
+                    request: request,
+                    targetFileURL: request.destinationURL,
+                    outcome: .success
+                )
+            )
+        case .failed, .cancelled:
+            return false
+        }
+    }
 
-        guard request.documentGeneration == documentState.generation else {
+    /// Validates and adopts a persistence-service read completion.
+    ///
+    /// Only a successful completion for the currently registered read may
+    /// replace canonical and document state. Failure and cancellation consume
+    /// their valid operation but preserve all document-owned values.
+    @discardableResult
+    public mutating func applyReadCompletion(
+        _ completion: PersistenceReadCompletion
+    ) -> Bool {
+        guard completion.documentGeneration == documentState.generation,
+              let request = persistenceState.registeredRead(matching: completion)
+        else {
             return false
         }
 
-        switch completion {
-        case .succeeded(let request):
-            if persistenceState.isAcceptedDuplicate(request) {
-                return true
-            }
-
-            guard persistenceState.isKnown(request) else {
+        switch completion.result {
+        case .success(let success):
+            guard success.sourceFileURL == request.sourceFileURL else {
                 return false
             }
 
+            replaceDocument(
+                text: success.text,
+                documentURL: success.sourceFileURL,
+                persistedRevision: .initial
+            )
+            return true
+        case .failure:
+            persistenceState.complete(request)
+            return false
+        case .cancellation(let sourceFileURL):
+            guard sourceFileURL == request.sourceFileURL else {
+                return false
+            }
+            persistenceState.complete(request)
+            return false
+        }
+    }
+
+    /// Validates and adopts a completion produced by `PersistenceService`.
+    ///
+    /// Identity, sequence, generation, snapshot revision, and target URL must
+    /// all match the registered immutable request before any document-owned
+    /// state can change.
+    @discardableResult
+    public mutating func applyWriteCompletion(
+        _ completion: PersistenceWriteCompletion
+    ) -> Bool {
+        guard completion.documentGeneration == documentState.generation else {
+            return false
+        }
+
+        if persistenceState.isAcceptedDuplicate(completion) {
+            return true
+        }
+
+        guard let request = persistenceState.registeredSave(matching: completion)
+        else {
+            return false
+        }
+
+        switch completion.outcome {
+        case .success:
             guard request.snapshot.revision >= documentState.cleanBaseline.revision else {
                 return false
             }
@@ -833,7 +1045,8 @@ public struct EditorState: Equatable, Sendable {
             documentState.acceptSuccessfulSave(request)
             persistenceState.accept(request)
             return true
-        case .failed, .cancelled:
+        case .failure, .cancellation:
+            persistenceState.complete(request)
             return false
         }
     }
