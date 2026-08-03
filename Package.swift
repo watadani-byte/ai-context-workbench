@@ -19,6 +19,10 @@ let package = Package(
         .testTarget(
             name: "WorkbenchCoreTests",
             dependencies: ["WorkbenchCore"]
+        ),
+        .testTarget(
+            name: "AIContextWorkbenchAppTests",
+            dependencies: ["AIContextWorkbenchApp", "WorkbenchCore"]
         )
     ]
 )

@@ -15,10 +15,38 @@ struct AIContextWorkbenchApp: App {
     }
 }
 
+@MainActor
 private struct ContentView: View {
-    @State private var editorState = EditorState(
-        initialText: "AI Context Workbench\n\nControlled synchronization prototype"
-    )
+    @State private var lifecycle: ApplicationLifecycleCoordinator
+
+    init() {
+        _lifecycle = State(
+            initialValue: ApplicationLifecycleCoordinator(
+                editorState: EditorState(
+                    initialText: "AI Context Workbench\n\nCanonical document"
+                ),
+                selectOpenURL: {
+#if canImport(AppKit)
+                    let panel = NSOpenPanel()
+                    panel.canChooseDirectories = false
+                    panel.allowsMultipleSelection = false
+                    return panel.runModal() == .OK ? panel.url : nil
+#else
+                    return nil
+#endif
+                },
+                selectSaveURL: {
+#if canImport(AppKit)
+                    let panel = NSSavePanel()
+                    panel.canCreateDirectories = true
+                    return panel.runModal() == .OK ? panel.url : nil
+#else
+                    return nil
+#endif
+                }
+            )
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,23 +54,32 @@ private struct ContentView: View {
                 Text(WorkbenchCore.productName)
                     .font(.headline)
                 Spacer()
-                Text(editorState.isDirty ? "Modified" : "Clean")
-                    .font(.caption)
-                    .foregroundStyle(editorState.isDirty ? .primary : .secondary)
-
-                Text("Revision \(editorState.revision.rawValue)")
+                Text(lifecycle.editorState.documentURL?.lastPathComponent ?? "Untitled")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Button("Load Sample") {
-                    editorState.replaceCanonicalText(
-                        with: "AI Context Workbench\n\nCanonical update at revision \(editorState.revision.rawValue + 1)"
-                    )
+                Text(lifecycle.editorState.isDirty ? "Modified" : "Clean")
+                    .font(.caption)
+                    .foregroundStyle(lifecycle.editorState.isDirty ? .primary : .secondary)
+
+                Text("Revision \(lifecycle.editorState.revision.rawValue)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button("New") {
+                    Task { await lifecycle.requestNewDocument() }
                 }
 
-                Button("Simulate Save") {
-                    let request = editorState.makeSaveRequest()
-                    editorState.applySaveCompletion(.succeeded(request))
+                Button("Open") {
+                    Task { await lifecycle.requestOpenDocument() }
+                }
+
+                Button("Save") {
+                    Task { await lifecycle.requestSave() }
+                }
+
+                Button("Save As") {
+                    Task { await lifecycle.requestSaveAs() }
                 }
             }
             .padding(.horizontal, 12)
@@ -51,14 +88,49 @@ private struct ContentView: View {
             Divider()
 
             PlatformTextView(
-                text: editorState.text,
-                revision: editorState.revision,
+                text: lifecycle.editorState.text,
+                revision: lifecycle.editorState.revision,
                 onTextChange: { newText in
-                    editorState.applyEditorText(newText)
+                    lifecycle.applyEditorText(newText)
                 }
             )
         }
         .frame(minWidth: 640, minHeight: 420)
+        .confirmationDialog(
+            "Save changes before continuing?",
+            isPresented: Binding(
+                get: { lifecycle.isAwaitingDirtyDecision },
+                set: { _ in }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Save") {
+                Task { await lifecycle.resolveDirtyDecision(.save) }
+            }
+            Button("Discard Changes", role: .destructive) {
+                Task { await lifecycle.resolveDirtyDecision(.discard) }
+            }
+            Button("Cancel", role: .cancel) {
+                Task { await lifecycle.resolveDirtyDecision(.cancel) }
+            }
+        }
+        .alert(
+            lifecycle.notice?.title ?? "",
+            isPresented: Binding(
+                get: { lifecycle.notice != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        lifecycle.acknowledgeNotice()
+                    }
+                }
+            )
+        ) {
+            Button("OK") {
+                lifecycle.acknowledgeNotice()
+            }
+        } message: {
+            Text(lifecycle.notice?.message ?? "")
+        }
     }
 }
 
