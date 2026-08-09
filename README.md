@@ -172,7 +172,7 @@ Documentation status date:
 2026-08-06
 
 Repository baseline identified by the approved project record:
-39070c5cb2047954617db5fd0bfc0d4667ed2895
+c657fbbc8483c02a120129d41290154adf16fa56
 
 Stage 5 — v0.1 Definition Closure:
 COMPLETE
